@@ -1,0 +1,8 @@
+﻿<?xml version="1.0" encoding="utf-8"?><Database Name="Mobitrans" Class="MobitransDataContext" xmlns="http://schemas.microsoft.com/linqtosql/dbml/2007">
+  <Connection Mode="WebSettings" ConnectionString="Data Source=172.30.0.165;Initial Catalog=Mobitrans;Persist Security Info=True;User ID=homam" SettingsObjectName="System.Configuration.ConfigurationManager.ConnectionStrings" SettingsPropertyName="MobitransConnectionString" Provider="System.Data.SqlClient" />
+  <Function Name="dbo.FN_SecondsSinceLastRecentVisit_ByIP" Method="FN_SecondsSinceLastRecentVisit_ByIP" IsComposable="true">
+    <Parameter Name="IP" Parameter="iP" Type="System.String" DbType="NVarChar(15)" />
+    <Parameter Name="Recency" Parameter="recency" Type="System.Int32" DbType="Int" />
+    <Return Type="System.Int32" />
+  </Function>
+</Database>
