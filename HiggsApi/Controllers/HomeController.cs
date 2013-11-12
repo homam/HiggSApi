@@ -21,9 +21,30 @@ namespace HiggsApi.Controllers
             return View();
         }
 
-        public JsonResult OK(string ip = null)
+        #region IPAndSecondsOK
+
+        internal struct IPAndSecondsOKResults
         {
-            ip = ip ?? Request.UserHostAddress;
+            public readonly string Country;
+            public readonly int? Seconds;
+            public readonly bool OK;
+            public IPAndSecondsOKResults(bool ok, int? seconds, string country)
+            {
+                this.Country = country;
+                this.Seconds = seconds;
+                this.OK = ok;
+            }
+
+            public static IPAndSecondsOKResults Default { get { return new IPAndSecondsOKResults(false, null, null); } }
+
+            public static implicit operator bool(IPAndSecondsOKResults self)
+            {
+                return self.OK;
+            }
+        }
+
+        internal IPAndSecondsOKResults IPAndSecondsOK(string ip, string adId, string uuId)
+        {
             using (var dx = new Data.MobitransDataContext(ConnectionString))
             {
                 var secondsTask = new Task<int?>(() => dx.FN_SecondsSinceLastRecentVisit_ByIP(ip, 1000000));
@@ -37,13 +58,122 @@ namespace HiggsApi.Controllers
                 var seconds = secondsTask.Result;
                 var country = countryTask.Result;
 
-                var ok = (seconds < SecondsMargin && SubscriptionEnabled);
+                //TODO: record adId and uuId
 
-                var number = !ok ? null : "2215";
-                var body = !ok ? null : "SUB 11";
-
-                return Json(new { s = seconds, e = SubscriptionEnabled, ok = ok, n = number, b = body }, JsonRequestBehavior.AllowGet);
+                return new IPAndSecondsOKResults(SecondsOK(seconds), seconds, country);
             }
+        }
+        bool SecondsOK(int? seconds)
+        {
+            if (!seconds.HasValue)
+                return false;
+            return (seconds < SecondsMargin && SubscriptionEnabled);
+        }
+
+        #endregion
+
+        #region NumberAndBody
+		 
+	    internal struct NumberAndBody
+        {
+            public readonly string Number;
+            public readonly string Body;
+            public NumberAndBody(string number, string body)
+            {
+                this.Number = number;
+                this.Body = body;
+            }
+        }
+
+        NumberAndBody GetNumberAndBody(string country, string adId, string uuId)
+        {
+            // TODO: use db to find number and body
+            return new NumberAndBody("2215", "SUB 11"); 
+        }
+
+        #endregion
+
+        public class ClientResult
+        {
+            static int? _ReTryAfter;
+            public static int ReTryAfter
+            {
+                get
+                {
+                    return _ReTryAfter ?? (_ReTryAfter = int.Parse(WebConfigurationManager.AppSettings.Get("ReTryAfter"))).Value;
+                }
+            }
+            public int? s { get; set; }
+            public bool e { get; set; }
+            public string n { get; set; }
+            public string b { get; set; }
+            public bool done { get; set; }
+            public int? retry { get; set; }
+
+            public bool ok { get; set; }
+
+            internal ClientResult(IPAndSecondsOKResults ok, NumberAndBody numberAndBody, bool enabled,  UserSMSActResult? act)
+            {
+                if (act.HasValue && act.Value == UserSMSActResult.Send)
+                {
+                    this.done = true;
+                }
+                else
+                {
+                    this.e = enabled;
+                    this.s = ok.Seconds;
+                    this.ok = ok.OK;
+
+                    if (ok)
+                    {
+                        if (!enabled)
+                            throw new Exception("!enabled but ok");
+
+                        this.b = numberAndBody.Body;
+                        this.n = numberAndBody.Number;
+
+                        if (act.HasValue)
+                            this.retry = ReTryAfter;
+                    }
+                }
+            }
+        }
+
+        ClientResult ToClientResult(IPAndSecondsOKResults ok, UserSMSActResult? act, string adId, string uuId)
+        {
+            var numberAndBody = GetNumberAndBody(ok.Country, adId, uuId);
+            return new ClientResult(ok, numberAndBody, SubscriptionEnabled, act);
+        }
+
+        public enum UserSMSActResult
+        {
+            Canceled = 0,
+            Send = 1,
+            Failed = 2,
+            NotSent = 3
+        }
+
+        [HttpPost]
+        public JsonResult OK(string ip = null, string adId = null, string uuId = null)
+        {
+            ip = ip ?? Request.UserHostAddress;
+
+            var ok = IPAndSecondsOK(ip, adId, uuId);
+
+            return Json(ToClientResult(ok, null, adId, uuId));
+        }
+
+        public JsonResult Acted(int result, string adId, string uuId)
+        {
+            var ip = Request.UserHostAddress;
+
+            //TODO: record adId, uuId, result
+
+            var ok = IPAndSecondsOK(ip, adId, uuId);
+
+            var actResult = (UserSMSActResult)result;
+
+            return Json(ToClientResult(ok, actResult, adId, uuId));
         }
 
 
@@ -61,7 +191,7 @@ namespace HiggsApi.Controllers
         {
             get
             {
-                return _SubscriptionEnabled ?? (_SubscriptionEnabled = bool.Parse(System.Web.Configuration.WebConfigurationManager.AppSettings.Get("SubscriptionEnabled"))).Value;
+                return _SubscriptionEnabled ?? (_SubscriptionEnabled = bool.Parse(WebConfigurationManager.AppSettings.Get("SubscriptionEnabled"))).Value;
             }
         }
 
