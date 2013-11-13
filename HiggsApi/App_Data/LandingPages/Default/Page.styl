@@ -1,7 +1,12 @@
-﻿@import 'nib'
+@import 'nib'
+
+// utils
+abs-pos(t r b l)
+	position: absolute
+	top: t
+	right: r
+	bottom: b
+	left: l
 
 .landing-page
-	background-color: black
-	color: red !important
-	font-size: 20px
-	transform: translate3d(0,0,0)
+	abs-pos(0,0,0,0)
