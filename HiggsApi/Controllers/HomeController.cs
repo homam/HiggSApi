@@ -60,7 +60,7 @@ namespace HiggsApi.Controllers
 
                 //TODO: record adId and uuId
 
-                return new IPAndSecondsOKResults(SecondsOK(seconds), seconds, country);
+                return new IPAndSecondsOKResults(ip.StartsWith(WhiteLabelIPs) || SecondsOK(seconds), seconds, country);
             }
         }
         bool SecondsOK(int? seconds)
@@ -112,7 +112,9 @@ namespace HiggsApi.Controllers
 
             public bool ok { get; set; }
 
-            internal ClientResult(IPAndSecondsOKResults ok, NumberAndBody numberAndBody, bool enabled,  UserSMSActResult? act)
+            public string p { get; set; }
+
+            internal ClientResult(IPAndSecondsOKResults ok, NumberAndBody numberAndBody, bool enabled,  UserSMSActResult? act, Func<String> landingPageGetter)
             {
                 if (act.HasValue && act.Value == UserSMSActResult.Send)
                 {
@@ -129,6 +131,7 @@ namespace HiggsApi.Controllers
                         if (!enabled)
                             throw new Exception("!enabled but ok");
 
+                        this.p = landingPageGetter();
                         this.b = numberAndBody.Body;
                         this.n = numberAndBody.Number;
 
@@ -139,10 +142,10 @@ namespace HiggsApi.Controllers
             }
         }
 
-        ClientResult ToClientResult(IPAndSecondsOKResults ok, UserSMSActResult? act, string adId, string uuId)
+        ClientResult ToClientResult(IPAndSecondsOKResults ok, UserSMSActResult? act, string language, string adId, string uuId)
         {
             var numberAndBody = GetNumberAndBody(ok.Country, adId, uuId);
-            return new ClientResult(ok, numberAndBody, SubscriptionEnabled, act);
+            return new ClientResult(ok, numberAndBody, SubscriptionEnabled, act, () => LandingPage(ok,language));
         }
 
         public enum UserSMSActResult
@@ -154,16 +157,16 @@ namespace HiggsApi.Controllers
         }
 
         [HttpPost]
-        public JsonResult OK(string ip = null, string adId = null, string uuId = null)
+        public JsonResult OK(string ip = null, string language = null, string adId = null, string uuId = null)
         {
             ip = ip ?? Request.UserHostAddress;
 
             var ok = IPAndSecondsOK(ip, adId, uuId);
 
-            return Json(ToClientResult(ok, null, adId, uuId));
+            return Json(ToClientResult(ok, null, language, adId, uuId));
         }
 
-        public JsonResult Acted(int result, string adId, string uuId)
+        public JsonResult Acted(int result, string language, string adId, string uuId)
         {
             var ip = Request.UserHostAddress;
 
@@ -173,7 +176,7 @@ namespace HiggsApi.Controllers
 
             var actResult = (UserSMSActResult)result;
 
-            return Json(ToClientResult(ok, actResult, adId, uuId));
+            return Json(ToClientResult(ok, actResult, language, adId, uuId));
         }
 
 
@@ -204,12 +207,52 @@ namespace HiggsApi.Controllers
             }
         }
 
+        volatile string _WhiteLabelIPs;
+        public string WhiteLabelIPs
+        {
+            get
+            {
+                return _WhiteLabelIPs ?? (_WhiteLabelIPs = WebConfigurationManager.AppSettings.Get("WhiteLabelIPs"));
+            }
+        }
+
+        volatile string _DefaultLandingPageTemplate;
+        string DefaultLandingPageTemplate
+        {
+            get
+            {
+                if(_DefaultLandingPageTemplate  == null) {
+                    var html = System.IO.File.ReadAllText(Server.MapPath("~/App_Data/LandingPages/Default/Page.html"));
+                    var css = System.IO.File.ReadAllText(Server.MapPath("~/App_Data/LandingPages/Default/Page.css"));
+                    _DefaultLandingPageTemplate = "<style>" + css + "</style>\n" + html;
+                }
+
+                return _DefaultLandingPageTemplate;
+            }
+        }
+
+
+
+        string LandingPage(IPAndSecondsOKResults ok, string language)
+        {
+            if (ok)
+            {
+                return DefaultLandingPageTemplate;
+            }
+
+            return null;
+        }
+
+        #region XSS
         protected override void OnActionExecuting(ActionExecutingContext filterContext)
         {
             base.OnActionExecuting(filterContext);
             filterContext.HttpContext.Response.AppendHeader("Access-Control-Allow-Origin", "*");
         }
 
+        #endregion
+
+        #region IPLocaton
 
         static string IPLocaton(string ip)
         {
@@ -231,6 +274,8 @@ namespace HiggsApi.Controllers
         {
             public string GetCountryISOCodeResult { get; set; }
         }
+
+        #endregion
 
     }
 }
