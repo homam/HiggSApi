@@ -1,8 +1,9 @@
 ﻿<script>
     $('.landing-page').on('click',function() {
-        alert("clicked!");
+        $(window).trigger("act")
     });
 </script>
+<link href="Page.css" rel="stylesheet" />
 <section class="landing-page">
-    YOHAHAH HAHA HAHA!
+    <button data-action="act-send">Subscribe Now!</button>
 </section>
